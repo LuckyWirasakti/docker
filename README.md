@@ -13,36 +13,32 @@ docker run --rm -it --name wirasakti_site \
 ```
 FROM python:alpine
 
-ENV PYTHONUNBUFFERED 1
+WORKDIR /usr/src/app
 
-RUN mkdir /code
-WORKDIR /code
+ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE 1
+
+RUN apk update \
+    && apk add postgresql-dev gcc python3-dev musl-dev
+    
+RUN pip install --upgrade pip
+COPY ./requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY ./entrypoint.sh .
+RUN sed -i 's/\r$//g' /usr/src/app/entrypoint.sh
+RUN chmod +x /usr/src/app/entrypoint.sh
 
 COPY . .
-
-RUN apk add --no-cache --virtual .build-deps \
-    ca-certificates gcc postgresql-dev linux-headers musl-dev \
-    libffi-dev jpeg-dev zlib-dev \
-    && pip install -r requirements.txt \
-    && find /usr/local \
-        \( -type d -a -name test -o -name tests \) \
-        -o \( -type f -a -name '*.pyc' -o -name '*.pyo' \) \
-        -exec rm -rf '{}' + \
-    && runDeps="$( \
-        scanelf --needed --nobanner --recursive /usr/local \
-                | awk '{ gsub(/,/, "\nso:", $2); print "so:" $2 }' \
-                | sort -u \
-                | xargs -r apk info --installed \
-                | sort -u \
-    )" \
-    && apk add --virtual .rundeps $runDeps \
-    && apk del .build-deps
 
 EXPOSE 8000
 ENTRYPOINT ["sh", "entrypoint.sh"]
 ```
 ##### ENTRYPOINT
 ```
+while ! nc -z 127.0.0.1 5432; do
+  sleep 0.1
+done
 python manage.py test --no-input
 python manage.py migrate --no-input
 python manage.py runserver 0.0.0.0:8000
